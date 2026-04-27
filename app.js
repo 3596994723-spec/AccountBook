@@ -209,10 +209,15 @@ function switchTab(idx) {
   if (idx === 1) renderRecords();
 }
 
-/* ====== 月份导航 ====== */
+/* ====== 月份导航（事件委托 + 防抖） ====== */
 let pickerYear = new Date().getFullYear();
+let monthChangeTimer = null;
 
 function changeMonth(delta) {
+  // 防抖：300ms内重复点击忽略
+  if (monthChangeTimer) return;
+  monthChangeTimer = setTimeout(function() { monthChangeTimer = null; }, 300);
+
   const [y,m] = currentMonth.split('-').map(Number);
   const d = new Date(y, m-1+delta, 1);
   const ny = d.getFullYear();
@@ -221,6 +226,20 @@ function changeMonth(delta) {
   document.getElementById('monthLabel').textContent = ny + '年' + (d.getMonth()+1) + '月';
   renderOverview();
 }
+
+// 月份导航事件委托（DOMContentLoaded 后绑定）
+document.addEventListener('DOMContentLoaded', function() {
+  var nav = document.querySelector('.month-nav');
+  if (nav) {
+    nav.addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-delta]');
+      if (btn) {
+        e.preventDefault();
+        changeMonth(parseInt(btn.dataset.delta));
+      }
+    });
+  }
+});
 
 function openMonthPicker() {
   const [y] = currentMonth.split('-').map(Number);
@@ -703,6 +722,16 @@ function fixRecordTypes(recs) {
 }
 
 /* ====== 初始化 ====== */
+(function loadSeedData() {
+  // 种子数据：内嵌在 index.html 中，作为最终兜底（无需任何网络请求）
+  try {
+    if (window.SEED_DATA && window.SEED_DATA.records && Array.isArray(window.SEED_DATA.records)) {
+      window.__seedRecords = window.SEED_DATA.records;
+      console.log('种子数据已就绪 (' + window.__seedRecords.length + ' 条)');
+    }
+  } catch(e) { /* ignore */ }
+})();
+
 (async function init() {
   try {
     await migrateFromLocalStorage();
@@ -712,15 +741,31 @@ function fixRecordTypes(recs) {
     if (isSyncEnabled()) {
       await pullFromGitee();
     } else if (records.length === 0) {
-      // 本地无数据且未配置同步，尝试静态数据源
-      const loaded = await loadStaticFallback();
+      // 尝试静态文件加载
+      var loaded = await loadStaticFallback();
       if (loaded) { renderAll(); updateSyncUI('', '已加载内置数据'); }
+      // 最终兜底：使用内嵌种子数据
+      else if (window.__seedRecords && window.__seedRecords.length > 0) {
+        records = window.__seedRecords.slice();
+        fixRecordTypes(records);
+        await saveToDb();
+        renderAll();
+        updateSyncUI('', '已加载初始数据 (' + records.length + ' 条)');
+        console.log('已从种子数据初始化');
+      }
       else { updateSyncUI('', '同步未启用（请在设置中配置 Token）'); }
     } else {
       updateSyncUI('', '同步未启用（请在设置中配置 Token）');
     }
   } catch(e) {
     console.error('初始化错误:', e);
+    // 初始化崩溃时的终极兜底
+    if (records.length === 0 && window.__seedRecords && window.__seedRecords.length > 0) {
+      records = window.__seedRecords.slice();
+      fixRecordTypes(records);
+      renderAll();
+      console.log('初始化异常，已从种子数据恢复');
+    }
     showToast('初始化出错，请刷新页面重试');
   }
 })();

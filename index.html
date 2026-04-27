@@ -442,9 +442,9 @@ button{font-family:inherit}
 <div class="main" id="mainContent">
   <div class="tab-panel active" id="panelOverview">
     <div class="month-nav">
-      <button onclick="changeMonth(-1)">◀</button>
+      <button data-delta="-1">◀</button>
       <span id="monthLabel" onclick="openMonthPicker()" style="cursor:pointer;padding:4px 14px;border-radius:10px;transition:var(--transition)">2026年4月</span>
-      <button onclick="changeMonth(1)">▶</button>
+      <button data-delta="1">▶</button>
     </div>
     <div class="month-picker" id="monthPicker">
       <div class="picker-overlay" onclick="closeMonthPicker()"></div>
@@ -631,4 +631,6 @@ button{font-family:inherit}
 </div>
 <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFileImport(event)">
 <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="handleRestore(event)">
+<!-- 种子数据：首次打开/新浏览器环境时自动加载，不依赖任何网络请求 -->
+<script>window.SEED_DATA={"records":[{"id":1,"date":"2026-04-26","type":"支出","cat":"餐饮","amt":28.5,"pay":"微信","note":"午饭+奶茶"},{"id":2,"date":"2026-04-26","type":"支出","cat":"交通","amt":5,"pay":"公交卡","note":"地铁"},{"id":3,"date":"2026-04-25","type":"收入","cat":"工资","amt":3500,"pay":"银行卡","note":"4月生活费到账"},{"id":4,"date":"2026-04-25","type":"支出","cat":"购物","amt":128,"pay":"支付宝","note":"买书"},{"id":5,"date":"2026-04-24","type":"支出","cat":"娱乐","amt":45,"pay":"微信","note":"电影票"},{"id":6,"date":"2026-04-06","type":"支出","cat":"餐饮","amt":30,"pay":"银行卡","note":"水牛奶皇后糖水铺"},{"id":7,"date":"2026-04-06","type":"支出","cat":"餐饮","amt":55.83,"pay":"银行卡","note":"烧烤"},{"id":8,"date":"2026-04-06","type":"支出","cat":"交通","amt":5.8,"pay":"银行卡","note":"地铁（大运→布心）"},{"id":9,"date":"2026-04-06","type":"支出","cat":"交通","amt":5.86,"pay":"银行卡","note":"地铁（布心→大运中心）"},{"id":10,"date":"2026-04-06","type":"支出","cat":"交通","amt":1.31,"pay":"支付宝","note":"公交（学校→大运地铁站）"},{"id":11,"date":"2026-04-07","type":"支出","cat":"餐饮","amt":3,"pay":"校园卡","note":"早餐：干蒸"},{"id":12,"date":"2026-04-07","type":"支出","cat":"餐饮","amt":7.5,"pay":"校园卡","note":"自选 | 午餐B饭"},{"id":13,"date":"2026-04-07","type":"支出","cat":"餐饮","amt":12,"pay":"校园卡","note":"袁小饺 | 晚餐A饭"},{"id":14,"date":"2026-04-08","type":"支出","cat":"餐饮","amt":9,"pay":"银行卡","note":"奶茶"},{"id":15,"date":"2026-04-08","type":"支出","cat":"餐饮","amt":14,"pay":"银行卡","note":"小街胡同牛杂面 | B饭"},{"id":16,"date":"2026-04-08","type":"支出","cat":"餐饮","amt":2.99,"pay":"银行卡","note":"维他豆奶"},{"id":17,"date":"2026-04-08","type":"支出","cat":"餐饮","amt":2,"pay":"校园卡","note":"茶叶蛋"},{"id":18,"date":"2026-04-07","type":"支出","cat":"餐饮","amt":2.31,"pay":"银行卡","note":"维他巧克力豆奶"},{"id":19,"date":"2026-04-08","type":"支出","cat":"餐饮","amt":12.97,"pay":"银行卡","note":"东北麻辣烫"},{"id":20,"date":"2026-04-09","type":"支出","cat":"餐饮","amt":9,"pay":"","note":"自选 | 午餐 B 饭"},{"id":21,"date":"2026-04-10","type":"支出","cat":"居住","amt":5,"pay":"校园卡","note":"电费"},{"id":22,"date":"2026-04-10","type":"支出","cat":"餐饮","amt":29.05,"pay":"银行卡","note":"绿茶餐厅 | 晚餐"},{"id":23,"date":"2026-04-09","type":"支出","cat":"餐饮","amt":27.3,"pay":"银行卡","note":"肯德基 | 昨天晚餐"},{"id":24,"date":"2026-04-11","type":"支出","cat":"餐饮","amt":15,"pay":"校园卡","note":"小街胡同 | 午餐B饭"},{"id":25,"date":"2026-04-11","type":"支出","cat":"餐饮","amt":111.8,"pay":"银行卡","note":"盛香亭转转热卤"},{"id":26,"date":"2026-04-11","type":"支出","cat":"交通","amt":3.76,"pay":"银行卡","note":"上午打车去兰著学校"},{"id":27,"date":"2026-04-11","type":"支出","cat":"交通","amt":4.8,"pay":"银行卡","note":"打车 | 上午打车回"},{"id":28,"date":"2026-04-11","type":"支出","cat":"交通","amt":3.14,"pay":"银行卡","note":"打车 | 下午打车去"},{"id":29,"date":"2026-04-11","type":"支出","cat":"交通","amt":4.94,"pay":"银行卡","note":"打车 | 下午打车回"}]};</script>
 <script src="app.js"></script>
