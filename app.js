@@ -47,7 +47,7 @@ async function giteeApi(method, url, body) {
   const token = getToken();
   if (!token) return null;
   const opts = {
-    method, headers: { 'Content-Type': 'application/json', 'Authorization': 'token ' + token }
+    method: method, headers: { 'Content-Type': 'application/json', 'Authorization': 'token ' + token }
   };
   if (body) opts.body = JSON.stringify(body);
   try {
@@ -98,15 +98,11 @@ async function pullFromGitee() {
 async function pushToGitee() {
   if (!isSyncEnabled()) return;
   updateSyncUI('syncing', '正在推送...');
+  const jsonStr = JSON.stringify({ version:2, updated:new Date().toISOString(), count:records.length, records });
   const payload = {
     access_token: getToken(),
     message: 'sync: ' + new Date().toLocaleString('zh-CN'),
-    content: btoa(unescape(encodeURIComponent(JSON.stringify({
-      version: 2,
-      updated: new Date().toISOString(),
-      count: records.length,
-      records: records
-    }))))
+    content: btoa(unescape(encodeURIComponent(jsonStr)))
   };
   // 检查文件是否已存在（需要 sha）
   const existing = await giteeApi('GET', '/repos/' + GITEE.owner + '/' + GITEE.repo + '/contents/' + GITEE.path);
@@ -270,7 +266,7 @@ function renderRecords() {
   // 移动端卡片
   container.innerHTML = filtered.map(r => {
     const catInfo = CATS[r.type]?.find(c=>c.name===r.cat) || {icon:'📦'};
-    return '<div class="record-card" onclick="editRecord(\''+r.id+'\')"><div class="rc-icon" style="background:'+(r.type==='收入'?'#e8f5e9':'#fff0f0')+'">'+catInfo.icon+'</div><div class="rc-info"><div class="rc-top"><span class="rc-cat">'+r.cat+'</span><span class="rc-amt '+(r.type==='income'?'income':'expense')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</span></div><div class="rc-bot"><span class="rc-note">'+(r.note||'')+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
+    return '<div class="record-card" onclick="editRecord(\''+r.id+'\')"><div class="rc-icon" style="background:'+(r.type==='收入'?'#e8f5e9':'#fff0f0')+'">'+catInfo.icon+'</div><div class="rc-info"><div class="rc-top"><span class="rc-cat">'+r.cat+'</span><span class="rc-amt '+(r.type==='收入'?'income':'expense')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</span></div><div class="rc-bot"><span class="rc-note">'+(r.note||'')+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
   }).join('');
   // 桌面端表格
   table.innerHTML = filtered.map(r =>
