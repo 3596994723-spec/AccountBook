@@ -91,6 +91,7 @@ async function pullFromGitee() {
     try {
       const json = JSON.parse(atob(data.content.replace(/\n/g,'')));
       if (json.records && Array.isArray(json.records)) {
+        fixRecordTypes(json.records);
         const localIds = new Set(records.map(r => r.id));
         let newCount = 0;
         for (const r of json.records) {
@@ -652,14 +653,58 @@ function renderAll() {
   renderRecords();
 }
 
+/* ====== 静态数据回退加载（GitHub Pages / 新用户首次打开） ====== */
+const STATIC_DATA_URLS = [
+  'data/records.json',
+  'https://raw.githubusercontent.com/3596994723-spec/AccountBook/main/data/records.json'
+];
+
+async function loadStaticFallback() {
+  // 仅在本地无数据时才尝试静态加载
+  if (records.length > 0) return false;
+  for (const url of STATIC_DATA_URLS) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.records && Array.isArray(json.records) && json.records.length > 0) {
+        records = json.records;
+        await saveToDb();
+        console.log('静态数据已加载 (' + records.length + ' 条):', url);
+        return true;
+      }
+    } catch(e) { /* 继续尝试下一个 */ }
+  }
+  return false;
+}
+
+/* ====== 数据兼容性修复 ====== */
+function fixRecordTypes(recs) {
+  let fixed = false;
+  for (const r of recs) {
+    // type: 数字 0/1 → 字符串 '收入'/'支出'
+    if (typeof r.type === 'number') { r.type = r.type === 0 ? '收入' : '支出'; fixed = true; }
+    // amount 字段名 → amt
+    if (r.amount !== undefined && r.amt === undefined) { r.amt = r.amount; delete r.amount; fixed = true; }
+  }
+  if (fixed) console.log('已修复记录格式兼容性');
+  return fixed;
+}
+
 /* ====== 初始化 ====== */
 (async function init() {
   try {
     await migrateFromLocalStorage();
     await loadRecords();
+    fixRecordTypes(records);
     renderAll();
     if (isSyncEnabled()) {
       await pullFromGitee();
+    } else if (records.length === 0) {
+      // 本地无数据且未配置同步，尝试静态数据源
+      const loaded = await loadStaticFallback();
+      if (loaded) { renderAll(); updateSyncUI('', '已加载内置数据'); }
+      else { updateSyncUI('', '同步未启用（请在设置中配置 Token）'); }
     } else {
       updateSyncUI('', '同步未启用（请在设置中配置 Token）');
     }
