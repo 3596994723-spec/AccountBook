@@ -1,7 +1,7 @@
 {
   "name": "个人记账本",
   "short_name": "记账本",
-  "description": "简洁好用的手机记账工具",
+  "description": "简洁好用的手机记账工具 v2.0",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f5f6fa",
