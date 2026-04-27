@@ -104,6 +104,8 @@ button{font-family:inherit}
   cursor:pointer;width:36px;height:36px;border-radius:10px;
   display:flex;align-items:center;justify-content:center;
   box-shadow:var(--shadow-sm);transition:var(--transition);
+  touch-action: manipulation;
+  -webkit-touch-callout:none;user-select:none;
 }
 .month-nav button:active{background:var(--primary);color:#fff;transform:scale(0.92)}
 .month-nav span{font-size:17px;font-weight:700;min-width:110px;text-align:center;color:var(--text)}
@@ -442,9 +444,9 @@ button{font-family:inherit}
 <div class="main" id="mainContent">
   <div class="tab-panel active" id="panelOverview">
     <div class="month-nav">
-      <button data-delta="-1">◀</button>
+      <button id="btnPrevMonth" onclick="changeMonth(-1)">◀</button>
       <span id="monthLabel" onclick="openMonthPicker()" style="cursor:pointer;padding:4px 14px;border-radius:10px;transition:var(--transition)">2026年4月</span>
-      <button data-delta="1">▶</button>
+      <button id="btnNextMonth" onclick="changeMonth(1)">▶</button>
     </div>
     <div class="month-picker" id="monthPicker">
       <div class="picker-overlay" onclick="closeMonthPicker()"></div>

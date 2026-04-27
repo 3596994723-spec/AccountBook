@@ -16,7 +16,9 @@ try {
   // 降级到 localStorage
 }
 
-let records = [];
+// 种子数据直接初始化（不依赖异步链，确保打开即有数据）
+var _seed = (typeof window !== 'undefined' && window.SEED_DATA && window.SEED_DATA.records) ? window.SEED_DATA.records : null;
+var records = _seed ? _seed.slice() : [];
 let currentMonth = new Date().toISOString().slice(0,7);
 let currentTab = 0;
 let currentType = '支出';
@@ -142,10 +144,21 @@ async function triggerSync() {
 /* ====== 数据操作 ====== */
 async function loadRecords() {
   if (db) {
-    records = await db.records.toArray();
+    var dbRecords = await db.records.toArray();
+    if (dbRecords.length > 0) {
+      // DB有数据 → 用DB数据（可能是用户之前操作过的）
+      records = dbRecords;
+    }
+    // else: 保持种子数据（records已在顶部从SEED_DATA初始化）
   } else {
     // 降级：从 localStorage 读取
-    try { const old = localStorage.getItem('accountbook_records'); if (old) records = JSON.parse(old); } catch(e) { records = []; }
+    try { 
+      var old = localStorage.getItem('accountbook_records'); 
+      if (old) { 
+        var parsed = JSON.parse(old);
+        if (parsed.length > 0) records = parsed; 
+      } 
+    } catch(e) { /* keep seed */ }
   }
 }
 
@@ -209,37 +222,27 @@ function switchTab(idx) {
   if (idx === 1) renderRecords();
 }
 
-/* ====== 月份导航（事件委托 + 防抖） ====== */
+/* ====== 月份导航（防重复触发） ====== */
 let pickerYear = new Date().getFullYear();
-let monthChangeTimer = null;
+var _monthChanging = false;  // 标志锁，防止快速重复点击
 
 function changeMonth(delta) {
-  // 防抖：300ms内重复点击忽略
-  if (monthChangeTimer) return;
-  monthChangeTimer = setTimeout(function() { monthChangeTimer = null; }, 300);
+  if (_monthChanging) return;   // 上一次操作还在进行中，忽略
+  _monthChanging = true;        // 加锁
 
-  const [y,m] = currentMonth.split('-').map(Number);
-  const d = new Date(y, m-1+delta, 1);
-  const ny = d.getFullYear();
-  const nm = String(d.getMonth()+1).padStart(2,'0');
+  var y, m, d, ny, nm;
+  var parts = currentMonth.split('-').map(Number);
+  y = parts[0]; m = parts[1];
+  d = new Date(y, m - 1 + delta, 1);
+  ny = d.getFullYear();
+  nm = String(d.getMonth() + 1).padStart(2, '0');
   currentMonth = ny + '-' + nm;
-  document.getElementById('monthLabel').textContent = ny + '年' + (d.getMonth()+1) + '月';
+  document.getElementById('monthLabel').textContent = ny + '年' + (d.getMonth() + 1) + '月';
   renderOverview();
-}
 
-// 月份导航事件委托（DOMContentLoaded 后绑定）
-document.addEventListener('DOMContentLoaded', function() {
-  var nav = document.querySelector('.month-nav');
-  if (nav) {
-    nav.addEventListener('click', function(e) {
-      var btn = e.target.closest('button[data-delta]');
-      if (btn) {
-        e.preventDefault();
-        changeMonth(parseInt(btn.dataset.delta));
-      }
-    });
-  }
-});
+  // 200ms后解锁（足够单次操作完成）
+  setTimeout(function() { _monthChanging = false; }, 200);
+}
 
 function openMonthPicker() {
   const [y] = currentMonth.split('-').map(Number);
@@ -722,50 +725,35 @@ function fixRecordTypes(recs) {
 }
 
 /* ====== 初始化 ====== */
-(function loadSeedData() {
-  // 种子数据：内嵌在 index.html 中，作为最终兜底（无需任何网络请求）
-  try {
-    if (window.SEED_DATA && window.SEED_DATA.records && Array.isArray(window.SEED_DATA.records)) {
-      window.__seedRecords = window.SEED_DATA.records;
-      console.log('种子数据已就绪 (' + window.__seedRecords.length + ' 条)');
-    }
-  } catch(e) { /* ignore */ }
-})();
-
 (async function init() {
   try {
-    await migrateFromLocalStorage();
-    await loadRecords();
-    fixRecordTypes(records);
-    renderAll();
+    console.log('初始化开始，当前记录数: ' + records.length + ' (来源: ' + (_seed ? '种子数据' : '空') + ')');
+    await migrateFromLocalStorage();   // 可能从localStorage迁移更多记录到DB
+    await loadRecords();                // 从DB/localStorage加载（不会覆盖已有种子数据）
+    fixRecordTypes(records);            // 兼容性修复
+    saveToDb();                        // 将当前records持久化（包括种子数据）
+    renderAll();                       // 渲染界面
+
     if (isSyncEnabled()) {
-      await pullFromGitee();
+      await pullFromGitee();           // 有Token则拉取云端最新
     } else if (records.length === 0) {
-      // 尝试静态文件加载
+      // 极端情况：种子数据也没有 → 尝试fetch
       var loaded = await loadStaticFallback();
-      if (loaded) { renderAll(); updateSyncUI('', '已加载内置数据'); }
-      // 最终兜底：使用内嵌种子数据
-      else if (window.__seedRecords && window.__seedRecords.length > 0) {
-        records = window.__seedRecords.slice();
-        fixRecordTypes(records);
-        await saveToDb();
-        renderAll();
-        updateSyncUI('', '已加载初始数据 (' + records.length + ' 条)');
-        console.log('已从种子数据初始化');
-      }
-      else { updateSyncUI('', '同步未启用（请在设置中配置 Token）'); }
+      if (loaded) { renderAll(); updateSyncUI('', '已加载远程数据'); }
+      else { updateSyncUI('', '暂无数据'); }
     } else {
-      updateSyncUI('', '同步未启用（请在设置中配置 Token）');
+      updateSyncUI('', '本地数据 (' + records.length + '条)');
     }
+
+    console.log('初始化完成，最终记录数: ' + records.length);
   } catch(e) {
     console.error('初始化错误:', e);
-    // 初始化崩溃时的终极兜底
-    if (records.length === 0 && window.__seedRecords && window.__seedRecords.length > 0) {
-      records = window.__seedRecords.slice();
+    // 崩溃时至少保证有数据显示
+    if (records.length === 0 && _seed) {
+      records = _seed.slice();
       fixRecordTypes(records);
-      renderAll();
-      console.log('初始化异常，已从种子数据恢复');
     }
-    showToast('初始化出错，请刷新页面重试');
+    renderAll();
+    showToast('部分功能可能异常，请刷新页面');
   }
 })();
