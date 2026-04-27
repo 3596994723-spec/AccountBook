@@ -178,6 +178,13 @@ async function migrateFromLocalStorage() {
 }
 
 /* ====== Toast & Confirm ====== */
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -336,11 +343,11 @@ function renderRecords() {
       '<div class="rc-icon '+(isIncome?'income-icon':'expense-icon')+'">'+catInfo.icon+'</div>'+
       '<div class="rc-info"><div class="rc-top"><span class="rc-cat">'+r.cat+'</span>'+
       '<span class="rc-amt '+(isIncome?'income':'expense')+'">'+(isIncome?'+':'-')+r.amt.toFixed(2)+'</span></div>'+
-      '<div class="rc-bot"><span class="rc-note">'+(r.note||'')+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
+      '<div class="rc-bot"><span class="rc-note">'+escapeHtml(r.note)+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
   }).join('');
   // 桌面端表格
   table.innerHTML = filtered.map(r =>
-    '<tr><td>'+r.date+'</td><td><span class="tag '+(r.type==='收入'?'income':'expense')+'">'+r.type+'</span></td><td>'+r.cat+'</td><td style="font-weight:700;color:'+(r.type==='收入'?'var(--income)':'var(--expense)')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</td><td>'+r.pay+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary)">'+(r.note||'')+'</td><td><button onclick="event.stopPropagation();deleteRecord(\''+r.id+'\')" style="background:none;border:none;color:var(--expense);cursor:pointer;font-size:16px;padding:4px">✕</button></td></tr>'
+    '<tr><td>'+r.date+'</td><td><span class="tag '+(r.type==='收入'?'income':'expense')+'">'+r.type+'</span></td><td>'+r.cat+'</td><td style="font-weight:700;color:'+(r.type==='收入'?'var(--income)':'var(--expense)')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</td><td>'+r.pay+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary)">'+escapeHtml(r.note||'')+'</td><td><button onclick="event.stopPropagation();deleteRecord(\''+r.id+'\')" style="background:none;border:none;color:var(--expense);cursor:pointer;font-size:16px;padding:4px">✕</button></td></tr>'
   ).join('');
 }
 function setFilter(t) { filterType = t; renderRecords(); }
@@ -531,6 +538,7 @@ function handleFileImport(e) {
         count++;
       }
       records.sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+      fixRecordTypes(records);
       await saveToDb();
       renderAll();
       schedulePush();
@@ -606,6 +614,7 @@ async function executeRestore(mode) {
     if (!Array.isArray(incoming)) { showToast('备份文件格式错误'); return; }
     if (mode === 'overwrite') {
       records = incoming;
+      fixRecordTypes(records);
       showToast('已覆盖恢复 ' + records.length + ' 条记录');
     } else {
       const existingIds = new Set(records.map(r => r.id));
@@ -613,6 +622,7 @@ async function executeRestore(mode) {
       for (const r of incoming) {
         if (!existingIds.has(r.id)) { records.push(r); newCount++; }
       }
+      fixRecordTypes(records);
       showToast('合并完成，新增 ' + newCount + ' 条记录');
     }
     records.sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -669,6 +679,7 @@ async function loadStaticFallback() {
       const json = await res.json();
       if (json.records && Array.isArray(json.records) && json.records.length > 0) {
         records = json.records;
+        fixRecordTypes(records);
         await saveToDb();
         console.log('静态数据已加载 (' + records.length + ' 条):', url);
         return true;
