@@ -1,8 +1,20 @@
 'use strict';
 
+/* ====== 全局错误捕获 ====== */
+window.onerror = function(msg, src, line, col, err) {
+  console.error('JS错误:', msg, '\n位置:', src, ':', line);
+  return false;
+};
+
 /* ====== Dexie IndexedDB ====== */
-const db = new Dexie('AccountBookDB');
-db.version(1).stores({ records: 'id, date, type, cat' });
+let db = null;
+try {
+  db = new Dexie('AccountBookDB');
+  db.version(1).stores({ records: 'id, date, type, cat' });
+} catch(e) {
+  console.error('Dexie 初始化失败:', e);
+  // 降级到 localStorage
+}
 
 let records = [];
 let currentMonth = new Date().toISOString().slice(0,7);
@@ -128,16 +140,27 @@ async function triggerSync() {
 
 /* ====== 数据操作 ====== */
 async function loadRecords() {
-  records = await db.records.toArray();
+  if (db) {
+    records = await db.records.toArray();
+  } else {
+    // 降级：从 localStorage 读取
+    try { const old = localStorage.getItem('accountbook_records'); if (old) records = JSON.parse(old); } catch(e) { records = []; }
+  }
 }
 
 async function saveToDb() {
-  await db.records.clear();
-  if (records.length > 0) await db.records.bulkPut(records);
+  if (db) {
+    await db.records.clear();
+    if (records.length > 0) await db.records.bulkPut(records);
+  } else {
+    // 降级：存到 localStorage
+    localStorage.setItem('accountbook_records', JSON.stringify(records));
+  }
 }
 
 /* ====== localStorage 迁移 ====== */
 async function migrateFromLocalStorage() {
+  if (!db) return; // 无需迁移
   const old = localStorage.getItem('accountbook_records');
   if (old) {
     try {
@@ -179,11 +202,51 @@ function switchTab(idx) {
 }
 
 /* ====== 月份导航 ====== */
+let pickerYear = new Date().getFullYear();
+
 function changeMonth(delta) {
   const [y,m] = currentMonth.split('-').map(Number);
   const d = new Date(y, m-1+delta, 1);
-  currentMonth = d.toISOString().slice(0,7);
-  document.getElementById('monthLabel').textContent = currentMonth.replace('-','年') + '月';
+  const ny = d.getFullYear();
+  const nm = String(d.getMonth()+1).padStart(2,'0');
+  currentMonth = ny + '-' + nm;
+  document.getElementById('monthLabel').textContent = ny + '年' + (d.getMonth()+1) + '月';
+  renderOverview();
+}
+
+function openMonthPicker() {
+  const [y] = currentMonth.split('-').map(Number);
+  pickerYear = y;
+  renderPickerMonths();
+  document.getElementById('monthPicker').classList.add('open');
+}
+function closeMonthPicker() {
+  document.getElementById('monthPicker').classList.remove('open');
+}
+function changePickerYear(delta) {
+  pickerYear += delta;
+  renderPickerMonths();
+}
+function renderPickerMonths() {
+  document.getElementById('pickerYearLabel').textContent = pickerYear;
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const dataMonths = new Set(records.map(r => r.date.slice(0,7)));
+  const html = monthNames.map((name, i) => {
+    const m = i + 1;
+    const val = pickerYear + '-' + String(m).padStart(2,'0');
+    const isCurrent = val === currentMonth;
+    const hasData = dataMonths.has(val);
+    let cls = 'picker-month';
+    if (isCurrent) cls += ' current';
+    if (hasData) cls += ' has-data';
+    return '<div class="' + cls + '" onclick="selectMonth(' + pickerYear + ',' + m + ')">' + name + '</div>';
+  }).join('');
+  document.getElementById('pickerMonths').innerHTML = html;
+}
+function selectMonth(y, m) {
+  currentMonth = y + '-' + String(m).padStart(2,'0');
+  document.getElementById('monthLabel').textContent = y + '年' + m + '月';
+  closeMonthPicker();
   renderOverview();
 }
 
@@ -536,20 +599,29 @@ async function saveToken() {
 }
 
 /* ====== 渲染所有 ====== */
+function formatMonthLabel(cm) {
+  const [y,m] = cm.split('-').map(Number);
+  return y + '年' + m + '月';
+}
 function renderAll() {
-  document.getElementById('monthLabel').textContent = currentMonth.replace('-','年') + '月';
+  document.getElementById('monthLabel').textContent = formatMonthLabel(currentMonth);
   renderOverview();
   renderRecords();
 }
 
 /* ====== 初始化 ====== */
 (async function init() {
-  await migrateFromLocalStorage();
-  await loadRecords();
-  renderAll();
-  if (isSyncEnabled()) {
-    await pullFromGitee();
-  } else {
-    updateSyncUI('', '同步未启用（请在设置中配置 Token）');
+  try {
+    await migrateFromLocalStorage();
+    await loadRecords();
+    renderAll();
+    if (isSyncEnabled()) {
+      await pullFromGitee();
+    } else {
+      updateSyncUI('', '同步未启用（请在设置中配置 Token）');
+    }
+  } catch(e) {
+    console.error('初始化错误:', e);
+    showToast('初始化出错，请刷新页面重试');
   }
 })();
