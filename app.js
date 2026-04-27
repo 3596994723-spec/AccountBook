@@ -200,7 +200,7 @@ function renderOverview() {
     '<div class="ov-card income"><div class="ov-label">本月收入</div><div class="ov-amount">+'+income.toFixed(2)+'</div></div>'+
     '<div class="ov-card expense"><div class="ov-label">本月支出</div><div class="ov-amount">-'+expense.toFixed(2)+'</div></div>'+
     '<div class="ov-card balance"><div class="ov-label">本月结余</div><div class="ov-amount">'+(income-expense).toFixed(2)+'</div></div>'+
-    '<div class="ov-card count"><div class="ov-label">本月笔数</div><div class="ov-amount">'+mr.length+'</div></div>';
+    '<div class="ov-card count"><div class="ov-label">记账笔数</div><div class="ov-amount">'+mr.length+'</div></div>';
   renderPieChart(mr);
   renderLineChart(mr);
   renderBudget(mr);
@@ -212,12 +212,12 @@ function renderPieChart(mr) {
   exps.forEach(r => { catMap[r.cat] = (catMap[r.cat]||0) + r.amt; });
   const labels = Object.keys(catMap);
   const data = Object.values(catMap);
-  const colors = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f43f5e','#6366f1','#84cc16','#a855f7','#0ea5e9','#d946ef'];
+  const colors = ['#6366f1','#8b5cf6','#f43f5e','#f59e0b','#10b981','#06b6d4','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16','#0ea5e9','#d946ef','#f97316'];
   if (pieChart) pieChart.destroy();
   pieChart = new Chart(document.getElementById('pieChart'), {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors.slice(0,labels.length), borderWidth:0 }] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ boxWidth:10, font:{size:11} } } } }
+    data: { labels, datasets: [{ data, backgroundColor: colors.slice(0,labels.length), borderWidth:0, hoverOffset:8 }] },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{ legend:{ position:'right', labels:{ boxWidth:10, font:{size:11}, padding:10, usePointStyle:true, pointStyle:'circle' } } } }
   });
 }
 
@@ -229,8 +229,8 @@ function renderLineChart(mr) {
   if (lineChart) lineChart.destroy();
   lineChart = new Chart(document.getElementById('lineChart'), {
     type: 'line',
-    data: { labels: days.map(d=>d.slice(5)), datasets: [{ label:'每日支出', data: days.map(d=>dayMap[d]), borderColor:'#1a73e8', backgroundColor:'rgba(26,115,232,0.1)', fill:true, tension:0.3, pointRadius:2 }] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ beginAtZero:true, ticks:{ font:{size:10} } }, x:{ ticks:{ font:{size:10} } } } }
+    data: { labels: days.map(d=>d.slice(5)), datasets: [{ label:'每日支出', data: days.map(d=>dayMap[d]), borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,0.08)', fill:true, tension:0.4, pointRadius:3, pointBackgroundColor:'#6366f1', pointBorderWidth:0, borderWidth:2.5 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'rgba(30,27,75,0.9)', cornerRadius:10, padding:10, titleFont:{size:12}, bodyFont:{size:13,weight:'bold'} } }, scales:{ y:{ beginAtZero:true, ticks:{ font:{size:10}, color:'#94a3b8' }, grid:{color:'rgba(99,102,241,0.06)'} }, x:{ ticks:{ font:{size:10}, color:'#94a3b8' }, grid:{display:false} } } }
   });
 }
 
@@ -242,10 +242,11 @@ function renderBudget(mr) {
   for (const [cat, budget] of Object.entries(BUDGETS)) {
     const spent = catMap[cat] || 0;
     const pct = Math.min(spent/budget*100, 100);
-    const color = pct >= 100 ? '#c00000' : pct >= 80 ? '#f59e0b' : '#00b050';
-    html += '<div class="budget-item"><div class="bi-row"><span class="bi-name">'+cat+'</span><span class="bi-num">'+spent.toFixed(0)+'/'+budget+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div></div>';
+    const color = pct >= 100 ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#10b981';
+    const catInfo = CATS['支出']?.find(c=>c.name===cat) || {icon:'📦'};
+    html += '<div class="budget-item"><div class="bi-row"><span class="bi-name">'+catInfo.icon+' '+cat+'</span><span class="bi-num">¥'+spent.toFixed(0)+' / ¥'+budget+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div></div>';
   }
-  document.getElementById('budgetList').innerHTML = html || '<div style="text-align:center;color:#9aa0a6;padding:10px">暂无支出数据</div>';
+  document.getElementById('budgetList').innerHTML = html || '<div style="text-align:center;color:var(--text-muted);padding:16px">暂无支出数据</div>';
 }
 
 /* ====== 明细页渲染 ====== */
@@ -266,11 +267,16 @@ function renderRecords() {
   // 移动端卡片
   container.innerHTML = filtered.map(r => {
     const catInfo = CATS[r.type]?.find(c=>c.name===r.cat) || {icon:'📦'};
-    return '<div class="record-card" onclick="editRecord(\''+r.id+'\')"><div class="rc-icon" style="background:'+(r.type==='收入'?'#e8f5e9':'#fff0f0')+'">'+catInfo.icon+'</div><div class="rc-info"><div class="rc-top"><span class="rc-cat">'+r.cat+'</span><span class="rc-amt '+(r.type==='收入'?'income':'expense')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</span></div><div class="rc-bot"><span class="rc-note">'+(r.note||'')+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
+    const isIncome = r.type==='收入';
+    return '<div class="record-card '+(isIncome?'income-card':'expense-card')+'" onclick="editRecord(\''+r.id+'\')">'+
+      '<div class="rc-icon '+(isIncome?'income-icon':'expense-icon')+'">'+catInfo.icon+'</div>'+
+      '<div class="rc-info"><div class="rc-top"><span class="rc-cat">'+r.cat+'</span>'+
+      '<span class="rc-amt '+(isIncome?'income':'expense')+'">'+(isIncome?'+':'-')+r.amt.toFixed(2)+'</span></div>'+
+      '<div class="rc-bot"><span class="rc-note">'+(r.note||'')+'</span><span class="rc-date">'+r.date+'</span></div></div></div>';
   }).join('');
   // 桌面端表格
   table.innerHTML = filtered.map(r =>
-    '<tr><td>'+r.date+'</td><td><span class="tag '+r.type+'">'+r.type+'</span></td><td>'+r.cat+'</td><td style="font-weight:600;color:'+(r.type==='收入'?'#00b050':'#c00000')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</td><td>'+r.pay+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.note||'')+'</td><td><button onclick="event.stopPropagation();deleteRecord(\''+r.id+'\')" style="background:none;border:none;color:#c00000;cursor:pointer;font-size:14px">✕</button></td></tr>'
+    '<tr><td>'+r.date+'</td><td><span class="tag '+(r.type==='收入'?'income':'expense')+'">'+r.type+'</span></td><td>'+r.cat+'</td><td style="font-weight:700;color:'+(r.type==='收入'?'var(--income)':'var(--expense)')+'">'+(r.type==='收入'?'+':'-')+r.amt.toFixed(2)+'</td><td>'+r.pay+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary)">'+(r.note||'')+'</td><td><button onclick="event.stopPropagation();deleteRecord(\''+r.id+'\')" style="background:none;border:none;color:var(--expense);cursor:pointer;font-size:16px;padding:4px">✕</button></td></tr>'
   ).join('');
 }
 function setFilter(t) { filterType = t; renderRecords(); }
