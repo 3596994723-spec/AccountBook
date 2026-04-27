@@ -410,6 +410,49 @@ document.addEventListener('DOMContentLoaded', function() {
     this.value = v;
     dAmount.textContent = v ? parseFloat(v).toFixed(2) : '0.00';
   });
+
+  /* ====== 快捷金额按钮 ====== */
+  const qaBtns = document.querySelectorAll('.qa-btn');
+  qaBtns.forEach(btn => {
+    let longPressTimer = null;
+    const amt = parseFloat(btn.dataset.amt);
+
+    function addAmount() {
+      const cur = parseFloat(hInput.value) || 0;
+      hInput.value = (cur + amt).toFixed(2);
+      dAmount.textContent = hInput.value;
+      hInput.dispatchEvent(new Event('input'));
+    }
+    function clearAmount() {
+      hInput.value = '';
+      dAmount.textContent = '0.00';
+      hInput.dispatchEvent(new Event('input'));
+    }
+
+    btn.addEventListener('click', function(e) {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      addAmount();
+    });
+
+    // 长按清零（移动端 touchstart / 桌面端 mousedown）
+    function startLongPress(e) {
+      longPressTimer = setTimeout(function() {
+        longPressTimer = null;
+        clearAmount();
+        showToast('金额已清零');
+      }, 500);
+    }
+    function cancelLongPress() {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }
+
+    btn.addEventListener('touchstart', function(e) { startLongPress(e); }, { passive:true });
+    btn.addEventListener('touchend', cancelLongPress);
+    btn.addEventListener('touchmove', cancelLongPress);
+    btn.addEventListener('mousedown', startLongPress);
+    btn.addEventListener('mouseup', cancelLongPress);
+    btn.addEventListener('mouseleave', cancelLongPress);
+  });
 });
 
 /* ====== 提交/编辑/删除 ====== */

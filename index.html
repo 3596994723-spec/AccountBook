@@ -259,9 +259,20 @@ button{font-family:inherit}
 .sheet-title{font-size:17px;font-weight:700;text-align:center;padding:6px 20px 18px;color:var(--text)}
 
 /* ====== Amount Display ====== */
-.amount-display{text-align:center;padding:0 20px 20px;position:relative}
+.amount-display{text-align:center;padding:0 20px 16px;position:relative}
 .amount-display .amt-value{font-size:48px;font-weight:800;color:var(--text);letter-spacing:-2px}
 .amount-display .amt-value .yen{font-size:26px;color:var(--text-secondary);margin-right:2px;vertical-align:top;margin-top:6px;display:inline-block}
+
+/* ====== Quick Amount Buttons ====== */
+.quick-amounts{display:flex;gap:8px;padding:0 20px 18px;justify-content:center;flex-wrap:wrap}
+.qa-btn{
+  padding:8px 0;border-radius:10px;border:1.5px solid var(--border);
+  background:var(--card);font-size:14px;font-weight:700;color:var(--text);
+  cursor:pointer;transition:var(--transition);min-width:56px;text-align:center;
+  user-select:none;-webkit-user-select:none;
+}
+.qa-btn:active{transform:scale(0.92);background:var(--primary);color:#fff;border-color:var(--primary)}
+.qa-btn.highlight{border-color:var(--primary);color:var(--primary);background:var(--primary-bg)}
 
 /* ====== Type Toggle ====== */
 .type-toggle{display:flex;gap:10px;padding:0 20px 18px;justify-content:center}
@@ -550,6 +561,14 @@ button{font-family:inherit}
   <div class="sheet-title" id="sheetTitle">记一笔支出</div>
   <div class="amount-display">
     <div class="amt-value"><span class="yen">¥</span><span id="displayAmount">0.00</span></div>
+  </div>
+  <div class="quick-amounts">
+    <button class="qa-btn" data-amt="1">¥1</button>
+    <button class="qa-btn" data-amt="5">¥5</button>
+    <button class="qa-btn" data-amt="10">¥10</button>
+    <button class="qa-btn highlight" data-amt="20">¥20</button>
+    <button class="qa-btn" data-amt="50">¥50</button>
+    <button class="qa-btn" data-amt="100">¥100</button>
   </div>
   <input class="hidden-input" id="hiddenAmtInput" type="text" inputmode="decimal" autofocus>
   <div class="type-toggle">
