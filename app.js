@@ -43,7 +43,7 @@ const CATS = {
     {name:'其他',icon:'💵'}
   ]
 };
-const PAYS = ['微信','支付宝','银行卡','现金','其他'];
+const PAYS = ['微信','支付宝','银行卡','校园卡','现金','其他'];
 const BUDGETS = {餐饮:800,交通:200,购物:500,娱乐:300,居住:1500,医疗:200,教育:200,通讯:50,服饰:200,美容:100,运动:100,其他:300};
 
 /* ====== Gitee API 同步 ====== */
@@ -447,21 +447,24 @@ document.addEventListener('DOMContentLoaded', function() {
     let longPressTimer = null;
     const amt = parseFloat(btn.dataset.amt);
 
-    function addAmount() {
-      const cur = parseFloat(hInput.value) || 0;
-      hInput.value = (cur + amt).toFixed(2);
+    function setAmount() {
+      // 直接设值为该按钮金额（而非累加）
+      hInput.value = amt.toFixed(2);
       dAmount.textContent = hInput.value;
       hInput.dispatchEvent(new Event('input'));
+      // 高亮当前按钮
+      updateQaHighlight(btn);
     }
     function clearAmount() {
       hInput.value = '';
       dAmount.textContent = '0.00';
       hInput.dispatchEvent(new Event('input'));
+      updateQaHighlight(null);  // 清除所有高亮
     }
 
     btn.addEventListener('click', function(e) {
       if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      addAmount();
+      setAmount();
     });
 
     // 长按清零（移动端 touchstart / 桌面端 mousedown）
@@ -483,46 +486,97 @@ document.addEventListener('DOMContentLoaded', function() {
     btn.addEventListener('mouseup', cancelLongPress);
     btn.addEventListener('mouseleave', cancelLongPress);
   });
+
+  /* 快捷按钮高亮管理 */
+  window.updateQaHighlight = function(activeBtn) {
+    qaBtns.forEach(b => b.classList.toggle('highlight', b === activeBtn));
+  };
+
+  /* 手动输入时清除快捷按钮高亮 */
+  hInput.addEventListener('input', function() {
+    // 如果手动修改了输入框，取消快捷按钮高亮
+    var v = this.value.replace(/[^\d.]/g,'');
+    const parts = v.split('.');
+    if (parts.length > 2) v = parts[0]+'.'+parts.slice(1).join('');
+    if (parts[1] && parts[1].length > 2) v = parts[0]+'.'+parts[1].slice(0,2);
+    this.value = v;
+    dAmount.textContent = v ? parseFloat(v).toFixed(2) : '0.00';
+
+    // 检查当前值是否匹配某个快捷按钮
+    var currentVal = parseFloat(v) || 0;
+    var matched = null;
+    for (var i = 0; i < qaBtns.length; i++) {
+      if (parseFloat(qaBtns[i].dataset.amt) === currentVal) {
+        matched = qaBtns[i];
+        break;
+      }
+    }
+    updateQaHighlight(matched);
+  });
 });
 
 /* ====== 提交/编辑/删除 ====== */
 async function submitRecord() {
-  const amtStr = document.getElementById('hiddenAmtInput').value;
-  const amt = parseFloat(amtStr);
-  if (!amt || amt <= 0) { showToast('请输入金额'); return; }
-  if (!selectedCat) { showToast('请选择分类'); return; }
-  const pay = currentType === '支出' ? (selectedPay || '其他') : '';
-  const note = document.getElementById('noteInput').value.trim();
-  const date = document.getElementById('dateInput').value;
-  if (!date) { showToast('请选择日期'); return; }
+  try {
+    const amtStr = document.getElementById('hiddenAmtInput').value;
+    const amt = parseFloat(amtStr);
+    if (!amt || amt <= 0) { showToast('请输入金额'); return; }
+    if (!selectedCat) { showToast('请选择分类'); return; }
+    const pay = currentType === '支出' ? (selectedPay || '其他') : '';
+    const note = document.getElementById('noteInput').value.trim();
+    const date = document.getElementById('dateInput').value;
+    if (!date) { showToast('请选择日期'); return; }
 
-  if (editingId) {
-    const idx = records.findIndex(r => r.id === editingId);
-    if (idx >= 0) {
-      records[idx] = { ...records[idx], type:currentType, cat:selectedCat, amt, pay, note, date };
-      showToast('已更新');
+    if (editingId) {
+      const idx = records.findIndex(r => r.id === editingId);
+      if (idx >= 0) {
+        records[idx] = { ...records[idx], type:currentType, cat:selectedCat, amt, pay, note, date };
+        console.log('[编辑] 记录已更新:', records[idx]);
+        showToast('已更新');
+      } else {
+        showToast('找不到要编辑的记录');
+        return;
+      }
+    } else {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      records.unshift({ id, date, type:currentType, cat:selectedCat, amt, pay, note });
+      console.log('[新增] 记录已添加:', { id, date, type: currentType, cat: selectedCat, amt });
+      showToast('已记录');
     }
-  } else {
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    records.unshift({ id, date, type:currentType, cat:selectedCat, amt, pay, note });
-    showToast('已记录');
-  }
-  records.sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  await saveToDb();
-  closeSheet();
-  renderAll();
-  schedulePush();
-}
-
-function editRecord(id) { openSheet(id); }
-
-async function deleteRecord(id) {
-  showConfirm('删除记录', '确定要删除这条记录吗？', async function() {
-    records = records.filter(r => r.id !== id);
+    records.sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     await saveToDb();
+    closeSheet();
     renderAll();
     schedulePush();
-    showToast('已删除');
+  } catch(err) {
+    console.error('[submitRecord] 错误:', err);
+    showToast('保存失败：' + err.message);
+    // 即使 DB 失败也更新内存中的数据
+    renderAll();
+  }
+}
+
+function editRecord(id) {
+  console.log('[编辑] 打开记录:', id);
+  const r = records.find(x => x.id === id);
+  if (!r) { showToast('记录不存在'); return; }
+  openSheet(id);
+}
+
+async function deleteRecord(id) {
+  console.log('[删除] 准备删除:', id);
+  showConfirm('删除记录', '确定要删除这条记录吗？', async function() {
+    try {
+      records = records.filter(r => r.id !== id);
+      await saveToDb();
+      renderAll();
+      schedulePush();
+      showToast('已删除');
+    } catch(err) {
+      console.error('[deleteRecord] 错误:', err);
+      showToast('删除失败：' + err.message);
+      renderAll();  // 内存中已删除，刷新显示
+    }
   });
 }
 
