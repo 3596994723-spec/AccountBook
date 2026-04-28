@@ -621,11 +621,6 @@ async function deleteRecord(id) {
       // 内存中已删除，即使DB失败也刷新显示
       renderAll();
     }
-    } catch(err) {
-      console.error('[deleteRecord] 错误:', err);
-      showToast('删除失败：' + err.message);
-      renderAll();  // 内存中已删除，刷新显示
-    }
   });
 }
 
