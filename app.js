@@ -91,7 +91,8 @@ async function pullFromGitee() {
   const data = await giteeApi('GET', '/repos/' + GITEE.owner + '/' + GITEE.repo + '/contents/' + GITEE.path);
   if (data && data.content) {
     try {
-      const json = JSON.parse(atob(data.content.replace(/\n/g,'')));
+      // 【修复】使用 UTF-8 安全解码，支持中文备注（原 atob 直接解码中文会乱码导致 JSON.parse 失败）
+      const json = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g,'')))));
       if (json.records && Array.isArray(json.records)) {
         fixRecordTypes(json.records);
         const localIds = new Set(records.map(r => r.id));
@@ -211,8 +212,8 @@ async function migrateFromLocalStorage() {
         const localIds = new Set((await db.records.toArray()).map(r => r.id));
         const fresh = oldRecords.filter(r => !localIds.has(r.id));
         if (fresh.length > 0) await db.records.bulkPut(fresh);
-        localStorage.removeItem('accountbook_records');
-        showToast('已从旧版本迁移 ' + fresh.length + ' 条记录');
+        // 【修复】不再删除 localStorage，因为新版双写机制依赖它作为热备份
+        if (fresh.length > 0) showToast('已从旧版本迁移 ' + fresh.length + ' 条记录');
       }
     } catch(e) { console.error('Migration error:', e); }
   }
