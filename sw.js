@@ -1,20 +1,17 @@
-const CACHE_NAME = 'accountbook-v7';
+const CACHE_NAME = 'accountbook-v8';
 const ASSETS = [
   './',
   './index.html',
   './app.js',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-  'https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js'
-];
+  './manifest.json'
+]; // 不缓存 CDN 资源，避免 CDN 挂了导致 SW 安装失败
 
+// 强制安装时删除所有旧缓存（包括 v5/v6/v7）
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(ASSETS).catch(() => {
-        // If CDN fails, cache local files only
-        return cache.addAll(['./', './index.html', './app.js', './manifest.json']);
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => {
+      return caches.open(CACHE_NAME).then(cache => {
+        return cache.addAll(ASSETS);
       });
     })
   );
