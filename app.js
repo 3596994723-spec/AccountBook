@@ -547,7 +547,9 @@ async function submitRecord() {
     await saveToDb();
     closeSheet();
     renderAll();
-    schedulePush();
+    
+    // 立即推送（防止云端旧数据覆盖本地新操作）
+    if (isSyncEnabled()) { pushToGitee(); } else { schedulePush(); }
   } catch(err) {
     console.error('[submitRecord] 错误:', err);
     showToast('保存失败：' + err.message);
@@ -567,11 +569,29 @@ async function deleteRecord(id) {
   console.log('[删除] 准备删除:', id);
   showConfirm('删除记录', '确定要删除这条记录吗？', async function() {
     try {
+      const beforeLen = records.length;
       records = records.filter(r => r.id !== id);
+      console.log('[删除] 完成: ' + beforeLen + ' → ' + records.length + ' 条');
+      
+      // 立即持久化到本地
       await saveToDb();
+      
+      // 立即渲染更新（在推送之前，确保UI先反映变化）
       renderAll();
-      schedulePush();
-      showToast('已删除');
+      showToast('已删除 (' + records.length + '条)');
+      
+      // 如果开启了同步，立即推送删除操作到云端（不等5秒debounce）
+      // 防止下次加载时pullFromGitee把已删除的记录拉回来
+      if (isSyncEnabled()) {
+        await pushToGitee();
+        console.log('[删除] 已同步到云端');
+      }
+    } catch(err) {
+      console.error('[deleteRecord] 错误:', err);
+      showToast('删除失败：' + err.message);
+      // 内存中已删除，即使DB失败也刷新显示
+      renderAll();
+    }
     } catch(err) {
       console.error('[deleteRecord] 错误:', err);
       showToast('删除失败：' + err.message);
