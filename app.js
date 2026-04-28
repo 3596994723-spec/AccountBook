@@ -141,34 +141,62 @@ async function triggerSync() {
   schedulePush();
 }
 
-/* ====== 数据操作 ====== */
+/* ====== 数据操作（多级回退加载 + 双写保存） ====== */
+
+/**
+ * 从 localStorage 读取备份记录（内部辅助函数）
+ * @returns {Array|null} 解析后的记录数组，失败返回 null
+ */
+function _loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem('accountbook_records');
+    if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
+  } catch(e) { console.warn('localStorage 读取失败:', e); }
+  return null;
+}
+
+/**
+ * 多级有序回退加载记录
+ * 优先级：IndexedDB > localStorage 备份 > 保持当前(种子数据)
+ * 找到有效数据即停止，确保任何单一数据源失效都能恢复
+ */
 async function loadRecords() {
+  // Level 1: IndexedDB（主存储）
   if (db) {
-    var dbRecords = await db.records.toArray();
-    if (dbRecords.length > 0) {
-      // DB有数据 → 用DB数据（可能是用户之前操作过的）
-      records = dbRecords;
-    }
-    // else: 保持种子数据（records已在顶部从SEED_DATA初始化）
-  } else {
-    // 降级：从 localStorage 读取
-    try { 
-      var old = localStorage.getItem('accountbook_records'); 
-      if (old) { 
-        var parsed = JSON.parse(old);
-        if (parsed.length > 0) records = parsed; 
-      } 
-    } catch(e) { /* keep seed */ }
+    try {
+      const dbRecords = await db.records.toArray();
+      if (dbRecords && dbRecords.length > 0) {
+        records = dbRecords;
+        console.log('[loadRecords] Level1 ✓ IndexedDB 加载 ' + records.length + ' 条');
+        return;
+      }
+    } catch(e) { console.warn('[loadRecords] IndexedDB 读取异常:', e); }
   }
+
+  // Level 2: localStorage 热备份（即使 db 对象存在但 DB 被清空，也能从此恢复）
+  const lsData = _loadFromLocalStorage();
+  if (lsData && lsData.length > 0) {
+    records = lsData;
+    console.log('[loadRecords] Level2 ✓ localStorage 备份恢复 ' + records.length + ' 条');
+    // 恢复后立即写回 IndexedDB，让主存储也同步
+    if (db) { try { await db.records.clear(); await db.records.bulkPut(records); } catch(e) {} }
+    return;
+  }
+
+  // Level 3+ : 均未命中 → 保持当前 records 不变（可能是种子数据或空数组）
+  console.log('[loadRecords] Level3○ IDB 和 localStorage 均无数据，保持当前 (' + records.length + ' 条)');
 }
 
 async function saveToDb() {
+  const jsonStr = JSON.stringify(records);
+  // 【核心修复】始终同步写入 localStorage 作为热备份（不会被浏览器静默清理 IndexedDB 时连带清除）
+  try { localStorage.setItem('accountbook_records', jsonStr); localStorage.setItem('ab_last_save', Date.now().toString()); } catch(e) { console.warn('localStorage 写入失败:', e); }
+  // 同时写 IndexedDB（主存储，支持大数据量）
   if (db) {
-    await db.records.clear();
-    if (records.length > 0) await db.records.bulkPut(records);
-  } else {
-    // 降级：存到 localStorage
-    localStorage.setItem('accountbook_records', JSON.stringify(records));
+    try {
+      await db.records.clear();
+      if (records.length > 0) await db.records.bulkPut(records);
+    } catch(e) { console.warn('IndexedDB 写入失败，数据已保存在 localStorage:', e); }
   }
 }
 
@@ -798,20 +826,46 @@ function fixRecordTypes(recs) {
   return fixed;
 }
 
-/* ====== 初始化 ====== */
+/* ====== 页面卸载前保底保存 ====== */
+// 确保用户关闭/刷新页面时，最后一次操作不丢失（同步写入，不可被中断）
+window.addEventListener('pagehide', function() {
+  try { localStorage.setItem('accountbook_records', JSON.stringify(records)); localStorage.setItem('ab_last_save', Date.now().toString()); } catch(e) {}
+}, { capture: true });
+// 兼容传统桌面浏览器
+window.addEventListener('beforeunload', function() {
+  try { localStorage.setItem('accountbook_records', JSON.stringify(records)); } catch(e) {}
+});
+
+/* ====== 初始化（带安全门守卫） ====== */
 (async function init() {
   try {
-    console.log('初始化开始，当前记录数: ' + records.length + ' (来源: ' + (_seed ? '种子数据' : '空') + ')');
-    await migrateFromLocalStorage();   // 可能从localStorage迁移更多记录到DB
-    await loadRecords();                // 从DB/localStorage加载（不会覆盖已有种子数据）
-    fixRecordTypes(records);            // 兼容性修复
-    saveToDb();                        // 将当前records持久化（包括种子数据）
+    console.log('[初始化] 开始，当前记录数: ' + records.length + ' (来源: ' + (_seed ? '种子数据' : '空') + ')');
+
+    // 【安全门】检查 localStorage 备份是否比当前内存中的数据更丰富
+    const lsBackup = _loadFromLocalStorage();
+    if (lsBackup && lsBackup.length > records.length) {
+      console.log('[初始化] 安全门触发：localStorage 备份 (' + lsBackup.length + '条) 比当前内存 (' + records.length + '条) 更丰富，优先使用备份');
+      records = lsBackup;
+    }
+
+    await migrateFromLocalStorage();   // 可能从旧版 localStorage 迁移更多记录到 DB
+    await loadRecords();                // 多级回退加载：IDB → localStorage → seed
+    fixRecordTypes(records);            // 兼容性修复（type数字→字符串, amount→amt）
+
+    // 【安全门】二次校验：如果所有加载路径都返回了空数据，但 localStorage 有备份，强制恢复
+    if (records.length === 0 && lsBackup && lsBackup.length > 0) {
+      console.warn('[初始化] 安全门兜底：所有主加载路径为空，但检测到 localStorage 备份 (' + lsBackup.length + '条)，强制恢复');
+      records = lsBackup;
+      fixRecordTypes(records);
+    }
+
+    saveToDb();                        // 双写持久化：IndexedDB + localStorage
     renderAll();                       // 渲染界面
 
     if (isSyncEnabled()) {
-      await pullFromGitee();           // 有Token则拉取云端最新
+      await pullFromGitee();           // 有 Token 则拉取云端最新并合并
     } else if (records.length === 0) {
-      // 极端情况：种子数据也没有 → 尝试fetch
+      // 极端情况：种子数据和本地存储都没有 → 尝试静态文件/GitHub raw
       var loaded = await loadStaticFallback();
       if (loaded) { renderAll(); updateSyncUI('', '已加载远程数据'); }
       else { updateSyncUI('', '暂无数据'); }
@@ -819,15 +873,15 @@ function fixRecordTypes(recs) {
       updateSyncUI('', '本地数据 (' + records.length + '条)');
     }
 
-    console.log('初始化完成，最终记录数: ' + records.length);
+    console.log('[初始化] 完成，最终记录数: ' + records.length);
   } catch(e) {
-    console.error('初始化错误:', e);
-    // 崩溃时至少保证有数据显示
-    if (records.length === 0 && _seed) {
-      records = _seed.slice();
-      fixRecordTypes(records);
-    }
+    console.error('[初始化] 错误:', e);
+    // 崩溃时多重保底：localStorage 备份 > 种子数据
+    const crashBackup = _loadFromLocalStorage();
+    if (crashBackup && crashBackup.length > 0) { records = crashBackup; console.log('[初始化] 崩溃恢复：从 localStorage 加载 ' + records.length + ' 条'); }
+    else if (records.length === 0 && _seed) { records = _seed.slice(); console.log('[初始化] 崩溃恢复：使用种子数据'); }
+    fixRecordTypes(records);
     renderAll();
-    showToast('部分功能可能异常，请刷新页面');
+    showToast('部分功能可能异常，已尝试恢复数据');
   }
 })();
