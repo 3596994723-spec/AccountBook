@@ -421,6 +421,21 @@ button{font-family:inherit}
 @keyframes fadeSlideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes scaleIn{from{transform:scale(0.95);opacity:0}to{transform:scale(1);opacity:1}}
 
+/* ====== Numpad（数字键盘，累计输入模式）====== */
+.numpad{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 20px 14px}
+.np-btn{
+  height:42px;border:1.5px solid var(--border);border-radius:10px;
+  background:var(--card-bg);color:var(--text);font-size:15px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+}
+.np-btn:active{transform:scale(.94);background:var(--primary-bg);border-color:var(--primary);color:var(--primary)}
+.np-btn.np-op{background:var(--primary-bg);border-color:var(--primary-light);color:var(--primary);font-size:13px}
+.np-btn.np-op:active{background:var(--primary);color:#fff}
+.np-btn.np-done{background:var(--primary);color:#fff;border-color:var(--primary);font-size:13px;border-radius:10px}
+.np-btn.np-done:active{background:var(--primary-dark)}
+
 /* ====== Responsive ====== */
 @media(min-width:768px){
   .main{max-width:920px;margin:0 auto}
@@ -574,6 +589,26 @@ button{font-family:inherit}
     <button class="qa-btn" data-amt="20">¥20</button>
     <button class="qa-btn" data-amt="50">¥50</button>
     <button class="qa-btn" data-amt="100">¥100</button>
+  </div>
+  <!-- 数字键盘：点击数字累加到当前金额，点击 + 确认当前并继续累加下一笔 -->
+  <div class="numpad" id="numpad">
+    <button class="np-btn" onclick="numpadKey('1')">1</button>
+    <button class="np-btn" onclick="numpadKey('2')">2</button>
+    <button class="np-btn" onclick="numpadKey('3')">3</button>
+    <button class="np-btn np-op" onclick="numpadBackspace()">⌫</button>
+
+    <button class="np-btn" onclick="numpadKey('4')">4</button>
+    <button class="np-btn" onclick="numpadKey('5')">5</button>
+    <button class="np-btn" onclick="numpadKey('6')">6</button>
+    <button class="np-btn np-op" onclick="numpadClear()">C</button>
+
+    <button class="np-btn" onclick="numpadKey('7')">7</button>
+    <button class="np-btn" onclick="numpadKey('8')">8</button>
+    <button class="np-btn" onclick="numpadKey('9')">9</button>
+    <button class="np-btn np-op" onclick="numpadKey('.')">.</button>
+
+    <button class="np-btn" style="grid-column:span 2" onclick="numpadKey('0')">0</button>
+    <button class="np-btn" style="grid-column:span 2" onclick="numpadConfirm()">✓ 完成</button>
   </div>
   <input class="hidden-input" id="hiddenAmtInput" type="text" inputmode="decimal" autofocus>
   <div class="type-toggle">

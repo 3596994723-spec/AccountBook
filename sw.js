@@ -18,10 +18,18 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
+self.addEventListener('message', event => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
+});
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => {
       return Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+    }).then(() => {
+      // 立即通知所有已存在的客户端重新加载，获取最新资源
+      self.clients.matchAll({ type: 'window' }).then(clients => {
+        clients.forEach(client => client.postMessage('reload'));
+      });
     })
   );
   self.clients.claim();

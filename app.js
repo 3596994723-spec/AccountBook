@@ -115,11 +115,18 @@ async function pullFromGitee() {
         records.sort((a,b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
         if (newCount > 0) await db.records.bulkPut(records);
         updateSyncUI('ok', newCount > 0 ? '已同步（拉取'+newCount+'条新记录）' : '已是最新');
+        showToast(newCount > 0 ? '云端同步成功+' + newCount + '条' : '已是最新数据');
         renderAll();
       }
-    } catch(e) { console.error('Parse gitee data error:', e); updateSyncUI('error','拉取解析失败'); }
+    } catch(e) {
+      console.error('Parse gitee data error:', e);
+      updateSyncUI('error','云端数据格式异常');
+      showToast('拉取失败：云端数据格式错误，请检查 Gitee 仓库文件');
+    }
   } else {
-    updateSyncUI('ok', '云端暂无数据，可先在本地记账后同步');
+    // null 表示 HTTP 请求失败（网络/Token/路径错误）
+    updateSyncUI('error', '云端拉取失败');
+    showToast('拉取失败：检查 Token 或仓库路径是否正确');
   }
 }
 
@@ -426,6 +433,7 @@ function setFilter(t) { filterType = t; renderRecords(); }
 /* ====== 记账面板 ====== */
 function openSheet(id) {
   editingId = id || null;
+  _numpadAccum = 0; // 重置数字键盘累加器
   const sheet = document.getElementById('sheet');
   const overlay = document.getElementById('sheetOverlay');
   if (id) {
@@ -497,8 +505,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const amt = parseFloat(btn.dataset.amt);
 
     function setAmount() {
-      // 直接设值为该按钮金额（而非累加）
-      hInput.value = amt.toFixed(2);
+      // 改为累加模式：当前金额 + 按钮金额（像计算器一样叠加）
+      const current = parseFloat(hInput.value) || 0;
+      hInput.value = (current + amt).toFixed(2);
       dAmount.textContent = hInput.value;
       hInput.dispatchEvent(new Event('input'));
       // 高亮当前按钮
@@ -563,6 +572,62 @@ document.addEventListener('DOMContentLoaded', function() {
     updateQaHighlight(matched);
   });
 });
+
+/* ====== 数字键盘（累计输入模式）====== */
+let _numpadAccum = 0; // 快捷金额累加的金额
+
+function numpadKey(d) {
+  const hInput = document.getElementById('hiddenAmtInput');
+  const dAmount = document.getElementById('displayAmount');
+  let v = hInput.value;
+  // 首次输入或有未确认的累加时，先以显示值为准重置
+  if (_numpadAccum > 0 && parseFloat(v) === _numpadAccum) {
+    v = '0';
+    _numpadAccum = 0;
+  }
+  if (v === '0' && d !== '.') v = '';
+  // 限制小数位数
+  if (v.includes('.')) {
+    const parts = v.split('.');
+    if (parts[1].length >= 2) return;
+    if (parts.length > 1 && d === '.') return;
+  }
+  v = (v + d).replace(/^0(?=\d)/, ''); // 去掉前导0
+  v = v.replace(/^\./, '0.'); // 处理纯小数
+  hInput.value = v;
+  dAmount.textContent = parseFloat(v || '0').toFixed(2);
+  hInput.dispatchEvent(new Event('input'));
+}
+
+function numpadBackspace() {
+  const hInput = document.getElementById('hiddenAmtInput');
+  const dAmount = document.getElementById('displayAmount');
+  let v = hInput.value;
+  if (v.length <= 1) { v = '0'; } else { v = v.slice(0, -1); }
+  hInput.value = v;
+  dAmount.textContent = parseFloat(v || '0').toFixed(2);
+  hInput.dispatchEvent(new Event('input'));
+}
+
+function numpadClear() {
+  _numpadAccum = 0;
+  const hInput = document.getElementById('hiddenAmtInput');
+  const dAmount = document.getElementById('displayAmount');
+  hInput.value = '0';
+  dAmount.textContent = '0.00';
+  hInput.dispatchEvent(new Event('input'));
+  if (window.updateQaHighlight) window.updateQaHighlight(null);
+}
+
+function numpadConfirm() {
+  const hInput = document.getElementById('hiddenAmtInput');
+  const dAmount = document.getElementById('displayAmount');
+  const v = parseFloat(hInput.value) || 0;
+  _numpadAccum = v;
+  dAmount.textContent = v.toFixed(2);
+  hInput.value = v.toFixed(2);
+  hInput.dispatchEvent(new Event('input'));
+}
 
 /* ====== 提交/编辑/删除 ====== */
 async function submitRecord() {
@@ -877,6 +942,19 @@ window.addEventListener('beforeunload', function() {
 
     saveToDb();                        // 双写持久化：IndexedDB + localStorage
     renderAll();                       // 渲染界面
+
+    // 通知已安装的新版 SW 跳过等待并刷新页面（强制用户获取最新代码）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        if (reg.waiting) {
+          reg.waiting.postMessage('skipWaiting');
+        }
+        // 监听 reload 消息，收到后刷新页面
+        navigator.serviceWorker.addEventListener('message', e => {
+          if (e.data === 'reload') location.reload();
+        });
+      });
+    }
 
     if (isSyncEnabled()) {
       await pullFromGitee();           // 有 Token 则拉取云端最新并合并
