@@ -57,16 +57,23 @@ function getToken() { return localStorage.getItem('gitee_token') || ''; }
 function setToken(t) { localStorage.setItem('gitee_token', t); }
 function isSyncEnabled() { return !!getToken(); }
 
-async function giteeApi(method, url, body) {
+async function giteeApi(method, url, body, extraHeaders) {
   const token = getToken();
   if (!token) return null;
-  const opts = {
-    method: method, headers: { 'Content-Type': 'application/json', 'Authorization': 'token ' + token }
-  };
+  const headers = Object.assign(
+    { 'Content-Type': 'application/json', 'Authorization': 'token ' + token },
+    extraHeaders || {}
+  );
+  const opts = { method: method, headers: headers };
   if (body) opts.body = JSON.stringify(body);
+  const isRaw = headers['Accept'] === 'application/vnd.gitee.raw';
   try {
     const res = await fetch('https://gitee.com/api/v5' + url, opts);
-    return await res.json();
+    if (!res.ok) {
+      console.error('Gitee API HTTP error:', res.status, res.statusText);
+      return null;
+    }
+    return isRaw ? await res.text() : await res.json();
   } catch(e) {
     console.error('Gitee API error:', e);
     return null;
@@ -88,11 +95,16 @@ function updateSyncUI(status, text) {
 async function pullFromGitee() {
   if (!isSyncEnabled()) return;
   updateSyncUI('syncing', '正在拉取...');
-  const data = await giteeApi('GET', '/repos/' + GITEE.owner + '/' + GITEE.repo + '/contents/' + GITEE.path);
-  if (data && data.content) {
+  // 使用 raw 模式直接获取纯文本 JSON，彻底绕过 base64 解码链，支持中文不乱码
+  const text = await giteeApi(
+    'GET',
+    '/repos/' + GITEE.owner + '/' + GITEE.repo + '/contents/' + GITEE.path,
+    null,
+    { 'Accept': 'application/vnd.gitee.raw' }
+  );
+  if (text) {
     try {
-      // 【修复】使用 UTF-8 安全解码，支持中文备注（原 atob 直接解码中文会乱码导致 JSON.parse 失败）
-      const json = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g,'')))));
+      const json = JSON.parse(text);
       if (json.records && Array.isArray(json.records)) {
         fixRecordTypes(json.records);
         const localIds = new Set(records.map(r => r.id));
@@ -114,11 +126,19 @@ async function pullFromGitee() {
 async function pushToGitee() {
   if (!isSyncEnabled()) return;
   updateSyncUI('syncing', '正在推送...');
-  const jsonStr = JSON.stringify({ version:2, updated:new Date().toISOString(), count:records.length, records });
+  let content;
+  try {
+    const jsonStr = JSON.stringify({ version:2, updated:new Date().toISOString(), count:records.length, records });
+    content = btoa(unescape(encodeURIComponent(jsonStr)));
+  } catch(e) {
+    console.error('Gitee push encode error:', e);
+    updateSyncUI('error', '数据编码失败');
+    return;
+  }
   const payload = {
     access_token: getToken(),
     message: 'sync: ' + new Date().toLocaleString('zh-CN'),
-    content: btoa(unescape(encodeURIComponent(jsonStr)))
+    content: content
   };
   // 检查文件是否已存在（需要 sha）
   const existing = await giteeApi('GET', '/repos/' + GITEE.owner + '/' + GITEE.repo + '/contents/' + GITEE.path);
